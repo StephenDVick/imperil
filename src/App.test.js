@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+jest.mock('react-leaflet');
+
+test('renders application title and RiskMap container', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+
+  expect(screen.getByRole('heading', { name: 'Imperil: World Domination' })).toBeInTheDocument();
+  expect(screen.getByTestId('leaflet-map')).toBeInTheDocument();
 });
