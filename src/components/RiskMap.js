@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Random } from 'random-js';
 import * as h3 from 'h3-js';
 
 // Leaflet icon fix (Phase 1 carryover)
@@ -12,6 +11,63 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+// Risk territory centroids (approximate center coordinates)
+const RISK_TERRITORIES = {
+  // North America
+  'Alaska': { lat: 64.0, lng: -153.0, continent: 'North America' },
+  'Alberta': { lat: 55.0, lng: -115.0, continent: 'North America' },
+  'Central America': { lat: 15.0, lng: -90.0, continent: 'North America' },
+  'Eastern United States': { lat: 38.0, lng: -80.0, continent: 'North America' },
+  'Greenland': { lat: 72.0, lng: -40.0, continent: 'North America' },
+  'Northwest Territory': { lat: 65.0, lng: -115.0, continent: 'North America' },
+  'Ontario': { lat: 50.0, lng: -85.0, continent: 'North America' },
+  'Quebec': { lat: 52.0, lng: -70.0, continent: 'North America' },
+  'Western United States': { lat: 40.0, lng: -112.0, continent: 'North America' },
+  
+  // South America
+  'Argentina': { lat: -38.0, lng: -64.0, continent: 'South America' },
+  'Brazil': { lat: -10.0, lng: -52.0, continent: 'South America' },
+  'Peru': { lat: -10.0, lng: -75.0, continent: 'South America' },
+  'Venezuela': { lat: 7.0, lng: -66.0, continent: 'South America' },
+  
+  // Europe
+  'Great Britain': { lat: 54.0, lng: -2.0, continent: 'Europe' },
+  'Iceland': { lat: 65.0, lng: -18.0, continent: 'Europe' },
+  'Northern Europe': { lat: 60.0, lng: 25.0, continent: 'Europe' },
+  'Scandinavia': { lat: 63.0, lng: 15.0, continent: 'Europe' },
+  'Southern Europe': { lat: 45.0, lng: 15.0, continent: 'Europe' },
+  'Ukraine': { lat: 49.0, lng: 32.0, continent: 'Europe' },
+  'Western Europe': { lat: 48.0, lng: 2.0, continent: 'Europe' },
+  
+  // Africa
+  'Congo': { lat: -2.0, lng: 22.0, continent: 'Africa' },
+  'East Africa': { lat: 0.0, lng: 38.0, continent: 'Africa' },
+  'Egypt': { lat: 26.0, lng: 30.0, continent: 'Africa' },
+  'Madagascar': { lat: -19.0, lng: 47.0, continent: 'Africa' },
+  'North Africa': { lat: 20.0, lng: 10.0, continent: 'Africa' },
+  'South Africa': { lat: -29.0, lng: 25.0, continent: 'Africa' },
+  
+  // Asia
+  'Afghanistan': { lat: 33.0, lng: 65.0, continent: 'Asia' },
+  'China': { lat: 35.0, lng: 105.0, continent: 'Asia' },
+  'India': { lat: 22.0, lng: 79.0, continent: 'Asia' },
+  'Irkutsk': { lat: 60.0, lng: 105.0, continent: 'Asia' },
+  'Japan': { lat: 36.0, lng: 138.0, continent: 'Asia' },
+  'Kamchatka': { lat: 56.0, lng: 160.0, continent: 'Asia' },
+  'Middle East': { lat: 30.0, lng: 45.0, continent: 'Asia' },
+  'Mongolia': { lat: 47.0, lng: 103.0, continent: 'Asia' },
+  'Siam': { lat: 15.0, lng: 101.0, continent: 'Asia' },
+  'Siberia': { lat: 60.0, lng: 100.0, continent: 'Asia' },
+  'Ural': { lat: 57.0, lng: 60.0, continent: 'Asia' },
+  'Yakutsk': { lat: 65.0, lng: 130.0, continent: 'Asia' },
+  
+  // Australia
+  'Eastern Australia': { lat: -33.0, lng: 151.0, continent: 'Australia' },
+  'Indonesia': { lat: -2.0, lng: 118.0, continent: 'Australia' },
+  'New Guinea': { lat: -6.0, lng: 147.0, continent: 'Australia' },
+  'Western Australia': { lat: -25.0, lng: 122.0, continent: 'Australia' },
+};
 
 const HEX_STYLE = {
   color: '#374151', // Dark gray borders
@@ -123,12 +179,12 @@ const isWaterHex = (lat, lng) => {
 };
 
 const RiskMap = () => {
-  const [center, setCenter] = useState([50.0, 10.0]); // Central Europe coordinates
+  const [center, setCenter] = useState([38.0, -80.0]); // Default to Eastern United States
   const zoom = BASE_ZOOM; // Fixed zoom level
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);
   const [showHexes, setShowHexes] = useState(true); // Toggle for hex overlay visibility
-  const random = useMemo(() => new Random(), []);
+  const [selectedTerritory, setSelectedTerritory] = useState('Eastern United States');
 
   const getHexPathOptions = useCallback((index, isSelected, isWater) => {
     const baseColor = getTerritoryColor(index);
@@ -221,14 +277,16 @@ const RiskMap = () => {
     setHexes(shapedHexes);
   }, []);
 
-  const randomizeCoords = useCallback(() => {
-    const lat = random.real(-85, 85, true);
-    const lng = random.real(-180, 180, true);
-
-    setCenter([lat, lng]);
-    setSelectedHex(null);
-    generateFullHexOverlay(lat, lng);
-  }, [generateFullHexOverlay, random]);
+  const selectTerritory = useCallback((territoryName) => {
+    const territory = RISK_TERRITORIES[territoryName];
+    if (territory) {
+      const { lat, lng } = territory;
+      setCenter([lat, lng]);
+      setSelectedHex(null);
+      setSelectedTerritory(territoryName);
+      generateFullHexOverlay(lat, lng);
+    }
+  }, [generateFullHexOverlay]);
 
   const toggleHexOverlay = useCallback(() => {
     setShowHexes(prev => !prev);
@@ -236,15 +294,45 @@ const RiskMap = () => {
   }, []);
 
   useEffect(() => {
-    randomizeCoords();
-  }, [randomizeCoords]);
+    // Initialize with default territory
+    selectTerritory('Eastern United States');
+  }, [selectTerritory]);
+
+  // Group territories by continent
+  const territoryGroups = useMemo(() => {
+    const groups = {};
+    Object.entries(RISK_TERRITORIES).forEach(([name, data]) => {
+      if (!groups[data.continent]) {
+        groups[data.continent] = [];
+      }
+      groups[data.continent].push(name);
+    });
+    // Sort territories within each continent
+    Object.keys(groups).forEach(continent => {
+      groups[continent].sort();
+    });
+    return groups;
+  }, []);
 
   return (
     <div className="map-wrapper">
       <div className="map-controls">
-        <button type="button" onClick={randomizeCoords}>
-          Randomize Coordinates
-        </button>
+        <select 
+          value={selectedTerritory} 
+          onChange={(e) => selectTerritory(e.target.value)}
+          style={{ marginRight: '10px', padding: '5px' }}
+        >
+          <option value="">Select Territory</option>
+          {Object.entries(territoryGroups).map(([continent, territories]) => (
+            <optgroup key={continent} label={continent}>
+              {territories.map(territory => (
+                <option key={territory} value={territory}>
+                  {territory}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
         <button type="button" onClick={toggleHexOverlay}>
           {showHexes ? 'Hide Hexes' : 'Show Hexes'}
         </button>

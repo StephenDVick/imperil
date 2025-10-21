@@ -76,38 +76,11 @@ jest.mock('react-leaflet', () => ({
   }),
 }));
 
-const mockReal = jest.fn();
-
-jest.mock('random-js', () => {
-  class MockRandom {
-    real(...args) {
-      return mockReal(...args);
-    }
-
-    integer() {
-      return 0;
-    }
-  }
-
-  return { Random: MockRandom };
-});
-
-beforeEach(() => {
-  mockReal.mockReset();
-
-  mockReal
-    .mockReturnValueOnce(10)
-    .mockReturnValueOnce(20)
-    .mockReturnValueOnce(30)
-    .mockReturnValueOnce(40);
-});
-
 describe('Phase 1 Smoke Tests', () => {
   test('package.json lists required dependencies', () => {
     expect(packageJson.dependencies).toMatchObject({
       leaflet: expect.any(String),
       'react-leaflet': expect.any(String),
-      'random-js': expect.any(String),
       'h3-js': expect.any(String),
     });
   });
@@ -117,7 +90,7 @@ describe('Phase 1 Smoke Tests', () => {
 
     const mapContainer = await screen.findByTestId('leaflet-map');
     await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe('10,20');
+      expect(mapContainer.dataset.center).toBe('38,-80'); // Eastern United States default
     });
     await waitFor(() => {
       expect(mapContainer.dataset.zoom).toBe('7'); // Updated to fixed zoom level
@@ -132,26 +105,6 @@ describe('Phase 1 Smoke Tests', () => {
     const polygons = await screen.findAllByTestId('polygon');
     expect(polygons.length).toBeGreaterThan(0);
     expect(polygons[0].dataset.pathColor).toBe('#1f2937');
-  });
-
-  test('RiskMap randomizes coordinates without changing zoom', async () => {
-    render(<RiskMap />);
-    const button = screen.getByRole('button', { name: 'Randomize Coordinates' });
-    const mapContainer = await screen.findByTestId('leaflet-map');
-
-    await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe('10,20');
-    });
-    await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('7'); // Fixed zoom level
-    });
-
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe('30,40');
-    });
-    expect(mapContainer.dataset.zoom).toBe('7'); // Zoom should remain the same
   });
 
   test('RiskMap renders hex overlay toggle button', async () => {

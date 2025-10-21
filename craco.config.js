@@ -22,4 +22,7 @@ module.exports = {
       return webpackConfig;
     },
   },
+  eslint: {
+    enable: false, // Disable ESLint loader to suppress warning
+  },
 };

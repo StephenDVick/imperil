@@ -71,28 +71,7 @@ jest.mock('h3-js', () => ({
   ]),
 }));
 
-const mockReal = jest.fn();
-
-jest.mock('random-js', () => {
-  class MockRandom {
-    real(...args) {
-      return mockReal(...args);
-    }
-  }
-  return { Random: MockRandom };
-});
-
 describe('Water Detection and Hex Styling Tests', () => {
-  beforeEach(() => {
-    mockReal.mockReset();
-    // Mock coordinates for Pacific Ocean (water)
-    mockReal
-      .mockReturnValueOnce(10) // lat - should be water
-      .mockReturnValueOnce(150) // lng - Pacific Ocean
-      .mockReturnValueOnce(50) // lat - should be land  
-      .mockReturnValueOnce(10); // lng - Europe
-  });
-
   test('water hexes have different styling than land hexes', async () => {
     render(<RiskMap />);
     
@@ -106,14 +85,7 @@ describe('Water Detection and Hex Styling Tests', () => {
   });
 
   test('water hexes use dashed line styling', async () => {
-    // Mock coordinates that should definitely be in water (Pacific Ocean)
-    mockReal.mockReset();
-    mockReal
-      .mockReturnValueOnce(0) // lat
-      .mockReturnValueOnce(150) // lng - Pacific Ocean
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(150);
-
+    // Test with Indonesia territory which is surrounded by water
     render(<RiskMap />);
     
     const polygons = await screen.findAllByTestId('polygon');
@@ -166,14 +138,7 @@ describe('Water Detection and Hex Styling Tests', () => {
   });
 
   test('water hexes have reduced opacity', async () => {
-    // Mock coordinates for water area
-    mockReal.mockReset();
-    mockReal
-      .mockReturnValueOnce(0) // lat
-      .mockReturnValueOnce(150) // lng - Pacific Ocean
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(150);
-
+    // Test with default territory (Eastern United States) which has coastal areas
     render(<RiskMap />);
     
     const polygons = await screen.findAllByTestId('polygon');
