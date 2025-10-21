@@ -21,20 +21,65 @@ const HEX_STYLE = {
   fillOpacity: 0.4,
 };
 
-const clampResolution = (zoom) => Math.max(3, Math.min(10, Math.floor((zoom - 4) * 1.2) + 3));
-const computeRadius = (zoom) => Math.max(3, Math.min(8, Math.floor(zoom / 2)));
+const ZOOM_LEVELS = [
+  { value: 0, label: '0 — Whole world' },
+  { value: 1, label: '1 — Continent / Intercontinental' },
+  { value: 2, label: '2 — Subcontinental area' },
+  { value: 3, label: '3 — Largest country' },
+  { value: 4, label: '4 — Large region' },
+  { value: 5, label: '5 — Large African country' },
+  { value: 6, label: '6 — Large European country' },
+  { value: 7, label: '7 — Small country or US state' },
+  { value: 8, label: '8 — Wide area' },
+  { value: 9, label: '9 — Large metropolitan area' },
+  { value: 10, label: '10 — Metropolitan area' },
+  { value: 11, label: '11 — City' },
+  { value: 12, label: '12 — Town or city district' },
+  { value: 13, label: '13 — Village or suburb' },
+  { value: 14, label: '14 — Small town' },
+  { value: 15, label: '15 — Small road' },
+  { value: 16, label: '16 — Street' },
+  { value: 17, label: '17 — Block / park / addresses' },
+  { value: 18, label: '18 — Buildings and trees' },
+  { value: 19, label: '19 — Highway details' },
+  { value: 20, label: '20 — Mid-sized building' },
+];
+
+const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
+
+const computeRadius = (zoom) => {
+  if (zoom <= 3) return 2;
+  if (zoom <= 6) return 3;
+  if (zoom <= 9) return 4;
+  if (zoom <= 12) return 5;
+  if (zoom <= 15) return 6;
+  if (zoom <= 18) return 7;
+  return 8;
+};
+
 const computeThresholds = (zoom) => {
-  const scale = Math.pow(0.75, Math.max(0, zoom - 4));
-  return {
-    lat: Math.max(0.5, 6 * scale),
-    lng: Math.max(0.5, 10 * scale),
-  };
+  if (zoom <= 3) {
+    return { lat: 60, lng: 120 };
+  }
+  if (zoom <= 6) {
+    return { lat: 30, lng: 60 };
+  }
+  if (zoom <= 10) {
+    return { lat: 12, lng: 24 };
+  }
+  if (zoom <= 14) {
+    return { lat: 6, lng: 12 };
+  }
+  if (zoom <= 17) {
+    return { lat: 3, lng: 6 };
+  }
+  return { lat: 1.5, lng: 3 };
 };
 
 const RiskMap = () => {
   const random = useMemo(() => new Random(), []);
   const [center, setCenter] = useState([0, 0]);
-  const [zoom, setZoom] = useState(4);
+  const [zoom, setZoom] = useState(16);
   const [hexes, setHexes] = useState([]);
 
   const generateFullHexOverlay = useCallback((lat, lng, targetZoom) => {
@@ -68,24 +113,23 @@ const RiskMap = () => {
           centroidLng,
         };
       })
-      .filter(({ centroidLat, centroidLng }) => {
-        return (
-          Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold
-        );
-      });
+      .filter(({ centroidLat, centroidLng }) =>
+        Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold,
+      );
 
     if (filtered.length > 0) {
       setHexes(filtered.map(({ hexId, boundary }) => ({ hexId, boundary })));
-    } else {
-      setHexes(
-        cluster.map((hexId) => ({
-          hexId,
-          boundary: h3
-            .cellToBoundary(hexId, true)
-            .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
-        })),
-      );
+      return;
     }
+
+    setHexes(
+      cluster.map((hexId) => ({
+        hexId,
+        boundary: h3
+          .cellToBoundary(hexId, true)
+          .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
+      })),
+    );
   }, []);
 
   const randomizeCoords = useCallback(() => {
@@ -113,15 +157,11 @@ const RiskMap = () => {
     <div className="map-wrapper">
       <div className="map-controls">
         <select aria-label="Select zoom level" value={zoom} onChange={handleZoomChange}>
-          <option value={4}>Zoom 4 — Regional (Countries)</option>
-          <option value={5}>Zoom 5 — Regional (States)</option>
-          <option value={6}>Zoom 6 — Regional Mid</option>
-          <option value={7}>Zoom 7 — Regional Dense</option>
-          <option value={8}>Zoom 8 — Local (Cities)</option>
-          <option value={9}>Zoom 9 — Local (Districts)</option>
-          <option value={10}>Zoom 10 — Local (Neighborhoods)</option>
-          <option value={11}>Zoom 11 — Hyper-Local</option>
-          <option value={12}>Zoom 12 — Tactical Detail</option>
+          {ZOOM_LEVELS.map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
         <button type="button" onClick={randomizeCoords}>
           Randomize Coordinates

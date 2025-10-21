@@ -49,7 +49,7 @@ describe('Phase 1 Smoke Tests', () => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('4');
+      expect(mapContainer.dataset.zoom).toBe('16');
     });
     expect(mapContainer.dataset.styleHeight).toBe('100%');
     expect(mapContainer.dataset.styleWidth).toBe('100%');
@@ -72,7 +72,7 @@ describe('Phase 1 Smoke Tests', () => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('4');
+      expect(mapContainer.dataset.zoom).toBe('16');
     });
 
     fireEvent.click(button);
@@ -80,7 +80,7 @@ describe('Phase 1 Smoke Tests', () => {
     await waitFor(() => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([30, 40]));
     });
-    expect(mapContainer.dataset.zoom).toBe('4');
+    expect(mapContainer.dataset.zoom).toBe('16');
   });
 
   test('RiskMap updates zoom from dropdown', async () => {
@@ -89,11 +89,17 @@ describe('Phase 1 Smoke Tests', () => {
     const mapContainer = await screen.findByTestId('leaflet-map');
     const select = screen.getByRole('combobox', { name: 'Select zoom level' });
 
+    expect(select).toHaveDisplayValue('16 — Street');
+
     fireEvent.change(select, { target: { value: '8' } });
 
     await waitFor(() => {
       expect(mapContainer.dataset.zoom).toBe('8');
     });
+
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('0 — Whole world');
+    expect(options[options.length - 1]).toHaveTextContent('20 — Mid-sized building');
   });
 
   test('App renders RiskMap and title', async () => {
