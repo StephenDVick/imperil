@@ -3,7 +3,58 @@ import App from '../App';
 import RiskMap from '../components/RiskMap';
 import packageJson from '../../package.json';
 
-jest.mock('react-leaflet');
+// Mock Leaflet L object
+jest.mock('leaflet', () => ({
+  divIcon: (options) => ({ options }),
+  Icon: {
+    Default: {
+      _getIconUrl: jest.fn(),
+      mergeOptions: jest.fn(),
+      prototype: {},
+    },
+  },
+}));
+
+jest.mock('react-leaflet', () => ({
+  MapContainer: ({ children, center, zoom, style, ...props }) => (
+    <div
+      data-testid="leaflet-map"
+      data-center={Array.isArray(center) ? center.join(',') : center}
+      data-zoom={zoom}
+      data-style-height={style?.height}
+      data-style-width={style?.width}
+      style={style}
+      {...props}
+    >
+      {children}
+    </div>
+  ),
+  TileLayer: ({ url, attribution, ...props }) => (
+    <div
+      data-testid="tile-layer"
+      data-url={url}
+      data-attribution={attribution}
+      {...props}
+    />
+  ),
+  Polygon: ({ positions, pathOptions, ...props }) => (
+    <div
+      data-testid="polygon"
+      data-path-color={pathOptions?.color}
+      data-path-weight={pathOptions?.weight}
+      {...props}
+    />
+  ),
+  Marker: ({ position, icon, ...props }) => (
+    <div data-testid="marker" data-position={JSON.stringify(position)} {...props} />
+  ),
+  useMap: () => ({
+    flyTo: jest.fn(),
+    getBounds: jest.fn(),
+    getCenter: jest.fn(),
+    setView: jest.fn(),
+  }),
+}));
 
 const mockReal = jest.fn();
 
@@ -46,10 +97,10 @@ describe('Phase 1 Smoke Tests', () => {
 
     const mapContainer = await screen.findByTestId('leaflet-map');
     await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
+      expect(mapContainer.dataset.center).toBe('10,20');
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('7');
+      expect(mapContainer.dataset.zoom).toBe('3');
     });
     expect(mapContainer.dataset.styleHeight).toBe('100%');
     expect(mapContainer.dataset.styleWidth).toBe('100%');
@@ -60,7 +111,7 @@ describe('Phase 1 Smoke Tests', () => {
 
     const polygons = await screen.findAllByTestId('polygon');
     expect(polygons.length).toBeGreaterThan(0);
-    expect(polygons[0].dataset.pathColor).toBe('#ff4500');
+    expect(polygons[0].dataset.pathColor).toBe('#1f2937');
   });
 
   test('RiskMap randomizes on demand', async () => {
@@ -69,18 +120,18 @@ describe('Phase 1 Smoke Tests', () => {
     const mapContainer = await screen.findByTestId('leaflet-map');
 
     await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
+      expect(mapContainer.dataset.center).toBe('10,20');
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('7');
+      expect(mapContainer.dataset.zoom).toBe('3');
     });
 
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe(JSON.stringify([30, 40]));
+      expect(mapContainer.dataset.center).toBe('30,40');
     });
-    expect(mapContainer.dataset.zoom).toBe('7');
+    expect(mapContainer.dataset.zoom).toBe('3');
   });
 
   test('RiskMap updates zoom from dropdown', async () => {
@@ -89,7 +140,7 @@ describe('Phase 1 Smoke Tests', () => {
     const mapContainer = await screen.findByTestId('leaflet-map');
     const select = screen.getByRole('combobox', { name: 'Select zoom level' });
 
-  expect(select).toHaveDisplayValue('7 — Small country or US state');
+  expect(select).toHaveDisplayValue('3 — Largest country');
 
     fireEvent.change(select, { target: { value: '8' } });
 

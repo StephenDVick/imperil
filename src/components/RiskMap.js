@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Random } from 'random-js';
 import * as h3 from 'h3-js';
@@ -14,12 +14,27 @@ L.Icon.Default.mergeOptions({
 });
 
 const HEX_STYLE = {
-  color: '#ff4500',
-  weight: 2,
-  opacity: 0.9,
-  fillColor: '#ff6347',
-  fillOpacity: 0.4,
+  color: '#374151', // Dark gray borders
+  weight: 1, // Thin borders
+  opacity: 0.8,
+  fillOpacity: 0.7,
 };
+
+// Territory color palette for board game aesthetic
+const TERRITORY_COLORS = [
+  '#dbeafe', // Soft blue
+  '#dcfce7', // Soft green
+  '#fef3c7', // Soft yellow
+  '#fce7f3', // Soft pink
+  '#e0f2fe', // Light blue
+  '#f0fdf4', // Light green
+  '#fffbeb', // Light yellow
+  '#fdf2f8', // Light pink
+  '#f0f9ff', // Very light blue
+  '#f7fee7', // Very light green
+  '#fefce8', // Very light yellow
+  '#fdf4ff', // Very light purple
+];
 
 const ZOOM_LEVELS = [
   { value: 0, label: '0 — Whole world' },
@@ -44,9 +59,7 @@ const ZOOM_LEVELS = [
   { value: 19, label: '19 — Highway details' },
 ];
 
-const BASE_ZOOM = 5;
-const MAX_HEXES = 128;
-const NEUTRAL_RATIO = 0.125;
+const BASE_ZOOM = 3;
 
 const MapViewSynchronizer = ({ center, zoom }) => {
   const map = useMap();
@@ -60,35 +73,47 @@ const MapViewSynchronizer = ({ center, zoom }) => {
 
 const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
 
+const generateTerritoryId = (index) => {
+  // Generate territory IDs like A1, A2, B1, B2, etc.
+  const letters = 'ABCDEFGH';
+  const letterIndex = Math.floor(index / 16);
+  const number = (index % 16) + 1;
+  return `${letters[letterIndex] || 'H'}${number}`;
+};
+
+const getTerritoryColor = (index) => {
+  return TERRITORY_COLORS[index % TERRITORY_COLORS.length];
+};
+
 const RiskMap = () => {
-  const [center, setCenter] = useState([48.8566, 2.3522]); // Paris coordinates
+  const [center, setCenter] = useState([50.0, 10.0]); // Central Europe coordinates
   const [zoom, setZoom] = useState(BASE_ZOOM);
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);
   const random = useMemo(() => new Random(), []);
 
-  const getHexPathOptions = useCallback((status, isSelected) => {
+  const getHexPathOptions = useCallback((index, isSelected) => {
+    const baseColor = getTerritoryColor(index);
+
     const style = {
       color: HEX_STYLE.color,
       weight: HEX_STYLE.weight,
       opacity: HEX_STYLE.opacity,
-      fillColor: HEX_STYLE.fillColor,
+      fillColor: baseColor,
       fillOpacity: HEX_STYLE.fillOpacity,
     };
 
-    if (status === 'neutral') {
-      style.color = '#6b7280';
-      style.fillColor = '#9ca3af';
-      style.opacity = 0.6;
-      style.fillOpacity = 0.2;
+    // Add subtle shadow/elevation effect
+    if (!isSelected) {
+      // Simulate elevation with slightly darker borders for depth
+      style.color = '#1f2937';
     }
 
     if (isSelected) {
-      style.color = '#ffd166';
-      style.fillColor = 'rgba(255, 209, 102, 0.6)';
-      style.weight = 3;
+      style.color = '#1f2937'; // Darker border for selected
+      style.weight = 2;
       style.opacity = 1;
-      style.fillOpacity = 0.5;
+      style.fillOpacity = 0.9;
     }
 
     return style;
@@ -100,14 +125,11 @@ const RiskMap = () => {
 
   const generateFullHexOverlay = useCallback((lat, lng) => {
     const resolution = clampResolution(BASE_ZOOM);
-    let radius = 3;
     const centerHex = h3.latLngToCell(lat, lng, resolution);
-    let cluster = h3.gridDisk(centerHex, radius);
 
-    while (cluster.length < MAX_HEXES && radius < 12) {
-      radius += 1;
-      cluster = h3.gridDisk(centerHex, radius);
-    }
+    // Generate hexagonal grid with 6 rings (127 hexagons total)
+    // Use gridDisk with large radius and sort by distance to get hexagonal shape
+    const cluster = h3.gridDisk(centerHex, 8); // Get a large disk
 
     const candidates = cluster.map((hexId) => {
       const boundary = h3
@@ -135,16 +157,23 @@ const RiskMap = () => {
       };
     });
 
+    // Sort by distance and take exactly 127 hexagons for hexagonal shape
     const sorted = [...candidates].sort((a, b) => a.distance - b.distance);
-    const limited = sorted.slice(0, MAX_HEXES);
-    const neutralCount = limited.length > 0 ? Math.max(1, Math.floor(limited.length * NEUTRAL_RATIO)) : 0;
-    const neutralStartIndex = Math.max(limited.length - neutralCount, 0);
+    const cluster127 = sorted.slice(0, 127);
 
-    const shapedHexes = limited.map(({ hexId, boundary }, index) => ({
-      hexId,
-      boundary,
-      status: index >= neutralStartIndex ? 'neutral' : 'active',
-    }));
+    const shapedHexes = cluster127.map(({ hexId, boundary, centroidLat, centroidLng }, index) => {
+      // Create territory ID (A1, A2, B1, etc.)
+      const territoryId = generateTerritoryId(index);
+
+      return {
+        hexId,
+        boundary,
+        centroidLat,
+        centroidLng,
+        territoryId,
+        status: 'territory', // All are playable territories now
+      };
+    });
 
     setHexes(shapedHexes);
   }, []);
@@ -202,13 +231,26 @@ const RiskMap = () => {
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          opacity={0.4}
         />
-        {hexes.map(({ hexId, boundary, status }) => (
+        {hexes.map(({ hexId, boundary, status }, index) => (
           <Polygon
             key={hexId}
             positions={boundary}
-            pathOptions={getHexPathOptions(status, hexId === selectedHex)}
+            pathOptions={getHexPathOptions(index, hexId === selectedHex)}
             eventHandlers={{ click: () => handleHexClick(hexId) }}
+          />
+        ))}
+        {hexes.map(({ hexId, centroidLat, centroidLng, territoryId }, index) => (
+          <Marker
+            key={`label-${hexId}`}
+            position={[centroidLat, centroidLng]}
+            icon={L.divIcon({
+              html: `<div style="color: #374151; font-size: 10px; font-weight: bold; text-shadow: 1px 1px 1px white; pointer-events: none;">${territoryId}</div>`,
+              className: 'territory-label',
+              iconSize: [30, 12],
+              iconAnchor: [15, 6],
+            })}
           />
         ))}
       </MapContainer>
