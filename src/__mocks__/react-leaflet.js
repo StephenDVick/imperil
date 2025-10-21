@@ -24,8 +24,20 @@ const TileLayer = ({ url, attribution, children }) =>
     children,
   );
 
+const Polygon = ({ positions, pathOptions, children }) =>
+  React.createElement(
+    'div',
+    {
+      'data-testid': 'polygon',
+      'data-positions': JSON.stringify(positions),
+      'data-path-color': pathOptions?.color,
+    },
+    children,
+  );
+
 module.exports = {
   __esModule: true,
   MapContainer,
   TileLayer,
+  Polygon,
 };
