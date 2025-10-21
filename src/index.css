@@ -1,13 +1,129 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #0f0f0f;
+  color: #f5f5f5;
+}
+
+#root {
+  display: flex;
+}
+
+.app-layout {
+  display: flex;
+  flex: 1;
+}
+
+.tools-sidebar {
+  width: 20%;
+  min-width: 220px;
+  background: linear-gradient(180deg, #1f1f1f 0%, #151515 100%);
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tools-sidebar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.tools-sidebar p {
+  margin: 0;
+  line-height: 1.4;
+  color: rgba(245, 245, 245, 0.75);
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.map-section {
+  width: 80%;
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background-color: #0b0b0b;
+}
+
+.map-aspect {
+  width: 100%;
+  position: relative;
+  padding-bottom: 56.25%;
+}
+
+.map-wrapper {
+  position: absolute;
+  inset: 0;
+}
+
+.map-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.map-controls select,
+.map-controls button {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #f5f5f5;
+}
+
+.map-controls button {
+  background-color: #ff4500;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.map-controls button:hover {
+  background-color: #ff6a33;
+}
+
+.leaflet-container {
+  position: absolute !important;
+  inset: 0;
+}
+
+@media (max-width: 960px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .tools-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .map-section {
+    width: 100%;
+  }
+
+  .map-aspect {
+    padding-bottom: 60%;
+  }
 }

@@ -13,7 +13,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const HEX_RING_RADIUS = 4;
 const HEX_STYLE = {
   color: '#ff4500',
   weight: 2,
@@ -22,52 +21,116 @@ const HEX_STYLE = {
   fillOpacity: 0.4,
 };
 
-const clampResolution = (zoom) => Math.max(2, Math.min(10, Math.floor((zoom - 3) * 1.2) + 2));
+const clampResolution = (zoom) => Math.max(3, Math.min(10, Math.floor((zoom - 4) * 1.2) + 3));
+const computeRadius = (zoom) => Math.max(3, Math.min(8, Math.floor(zoom / 2)));
+const computeThresholds = (zoom) => {
+  const scale = Math.pow(0.75, Math.max(0, zoom - 4));
+  return {
+    lat: Math.max(0.5, 6 * scale),
+    lng: Math.max(0.5, 10 * scale),
+  };
+};
 
 const RiskMap = () => {
   const random = useMemo(() => new Random(), []);
   const [center, setCenter] = useState([0, 0]);
-  const [zoom, setZoom] = useState(3);
+  const [zoom, setZoom] = useState(4);
   const [hexes, setHexes] = useState([]);
 
-  const generateHexOverlay = useCallback((lat, lng, targetZoom) => {
+  const generateFullHexOverlay = useCallback((lat, lng, targetZoom) => {
     const resolution = clampResolution(targetZoom);
+    const radius = computeRadius(targetZoom);
+    const { lat: latThreshold, lng: lngThreshold } = computeThresholds(targetZoom);
     const centerHex = h3.latLngToCell(lat, lng, resolution);
-    const cluster = h3.gridDisk(centerHex, HEX_RING_RADIUS);
+    const cluster = h3.gridDisk(centerHex, radius);
 
-    setHexes(
-      cluster.map((hexId) => ({
-        hexId,
-        boundary: h3
+    const filtered = cluster
+      .map((hexId) => {
+        const boundary = h3
           .cellToBoundary(hexId, true)
-          .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
-      })),
-    );
+          .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
+        const centroid = boundary.reduce(
+          (acc, [boundaryLat, boundaryLng]) => {
+            acc.lat += boundaryLat;
+            acc.lng += boundaryLng;
+            return acc;
+          },
+          { lat: 0, lng: 0 },
+        );
+        const pointsCount = boundary.length || 1;
+        const centroidLat = centroid.lat / pointsCount;
+        const centroidLng = centroid.lng / pointsCount;
+
+        return {
+          hexId,
+          boundary,
+          centroidLat,
+          centroidLng,
+        };
+      })
+      .filter(({ centroidLat, centroidLng }) => {
+        return (
+          Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold
+        );
+      });
+
+    if (filtered.length > 0) {
+      setHexes(filtered.map(({ hexId, boundary }) => ({ hexId, boundary })));
+    } else {
+      setHexes(
+        cluster.map((hexId) => ({
+          hexId,
+          boundary: h3
+            .cellToBoundary(hexId, true)
+            .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
+        })),
+      );
+    }
   }, []);
 
-  const randomizeMap = useCallback(() => {
+  const randomizeCoords = useCallback(() => {
     const lat = random.real(-85, 85, true);
     const lng = random.real(-180, 180, true);
-    const newZoom = random.integer(3, 10);
 
     setCenter([lat, lng]);
-    setZoom(newZoom);
-    generateHexOverlay(lat, lng, newZoom);
-  }, [generateHexOverlay, random]);
+    generateFullHexOverlay(lat, lng, zoom);
+  }, [generateFullHexOverlay, random, zoom]);
+
+  const handleZoomChange = useCallback(
+    (event) => {
+      const newZoom = Number(event.target.value);
+      setZoom(newZoom);
+      generateFullHexOverlay(center[0], center[1], newZoom);
+    },
+    [center, generateFullHexOverlay],
+  );
 
   useEffect(() => {
-    randomizeMap();
-  }, [randomizeMap]);
+    randomizeCoords();
+  }, [randomizeCoords]);
 
   return (
-    <div>
-      <button onClick={randomizeMap} style={{ marginBottom: '10px' }}>
-        Randomize Hex Battlefield
-      </button>
+    <div className="map-wrapper">
+      <div className="map-controls">
+        <select aria-label="Select zoom level" value={zoom} onChange={handleZoomChange}>
+          <option value={4}>Zoom 4 — Regional (Countries)</option>
+          <option value={5}>Zoom 5 — Regional (States)</option>
+          <option value={6}>Zoom 6 — Regional Mid</option>
+          <option value={7}>Zoom 7 — Regional Dense</option>
+          <option value={8}>Zoom 8 — Local (Cities)</option>
+          <option value={9}>Zoom 9 — Local (Districts)</option>
+          <option value={10}>Zoom 10 — Local (Neighborhoods)</option>
+          <option value={11}>Zoom 11 — Hyper-Local</option>
+          <option value={12}>Zoom 12 — Tactical Detail</option>
+        </select>
+        <button type="button" onClick={randomizeCoords}>
+          Randomize Coordinates
+        </button>
+      </div>
       <MapContainer
         center={center}
         zoom={zoom}
-        style={{ height: '600px', width: '100%' }}
+        style={{ height: '100%', width: '100%' }}
         data-testid="leaflet-map"
       >
         <TileLayer

@@ -6,7 +6,6 @@ import packageJson from '../../package.json';
 jest.mock('react-leaflet');
 
 const mockReal = jest.fn();
-const mockInteger = jest.fn();
 
 jest.mock('random-js', () => {
   class MockRandom {
@@ -14,8 +13,8 @@ jest.mock('random-js', () => {
       return mockReal(...args);
     }
 
-    integer(...args) {
-      return mockInteger(...args);
+    integer() {
+      return 0;
     }
   }
 
@@ -24,15 +23,12 @@ jest.mock('random-js', () => {
 
 beforeEach(() => {
   mockReal.mockReset();
-  mockInteger.mockReset();
 
   mockReal
     .mockReturnValueOnce(10)
     .mockReturnValueOnce(20)
     .mockReturnValueOnce(30)
     .mockReturnValueOnce(40);
-
-  mockInteger.mockReturnValueOnce(5).mockReturnValueOnce(7);
 });
 
 describe('Phase 1 Smoke Tests', () => {
@@ -53,9 +49,9 @@ describe('Phase 1 Smoke Tests', () => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('5');
+      expect(mapContainer.dataset.zoom).toBe('4');
     });
-    expect(mapContainer.dataset.styleHeight).toBe('600px');
+    expect(mapContainer.dataset.styleHeight).toBe('100%');
     expect(mapContainer.dataset.styleWidth).toBe('100%');
 
     const tileLayer = screen.getByTestId('tile-layer');
@@ -69,14 +65,14 @@ describe('Phase 1 Smoke Tests', () => {
 
   test('RiskMap randomizes on demand', async () => {
     render(<RiskMap />);
-    const button = screen.getByRole('button', { name: 'Randomize Hex Battlefield' });
+    const button = screen.getByRole('button', { name: 'Randomize Coordinates' });
     const mapContainer = await screen.findByTestId('leaflet-map');
 
     await waitFor(() => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([10, 20]));
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('5');
+      expect(mapContainer.dataset.zoom).toBe('4');
     });
 
     fireEvent.click(button);
@@ -84,8 +80,19 @@ describe('Phase 1 Smoke Tests', () => {
     await waitFor(() => {
       expect(mapContainer.dataset.center).toBe(JSON.stringify([30, 40]));
     });
+    expect(mapContainer.dataset.zoom).toBe('4');
+  });
+
+  test('RiskMap updates zoom from dropdown', async () => {
+    render(<RiskMap />);
+
+    const mapContainer = await screen.findByTestId('leaflet-map');
+    const select = screen.getByRole('combobox', { name: 'Select zoom level' });
+
+    fireEvent.change(select, { target: { value: '8' } });
+
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('7');
+      expect(mapContainer.dataset.zoom).toBe('8');
     });
   });
 
