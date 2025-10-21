@@ -44,6 +44,9 @@ const ZOOM_LEVELS = [
   { value: 19, label: '19 — Highway details' },
 ];
 
+const MAX_HEXES = 128;
+const NEUTRAL_RATIO = 0.125;
+
 const MapViewSynchronizer = ({ center, zoom }) => {
   const map = useMap();
 
@@ -90,55 +93,94 @@ const RiskMap = () => {
   const [center, setCenter] = useState([0, 0]);
   const [zoom, setZoom] = useState(16);
   const [hexes, setHexes] = useState([]);
+  const [selectedHex, setSelectedHex] = useState(null);
+
+  const getHexPathOptions = useCallback((status, isSelected) => {
+    const style = {
+      color: HEX_STYLE.color,
+      weight: HEX_STYLE.weight,
+      opacity: HEX_STYLE.opacity,
+      fillColor: HEX_STYLE.fillColor,
+      fillOpacity: HEX_STYLE.fillOpacity,
+    };
+
+    if (status === 'neutral') {
+      style.color = '#6b7280';
+      style.fillColor = '#9ca3af';
+      style.opacity = 0.6;
+      style.fillOpacity = 0.2;
+    }
+
+    if (isSelected) {
+      style.color = '#ffd166';
+      style.fillColor = 'rgba(255, 209, 102, 0.6)';
+      style.weight = 3;
+      style.opacity = 1;
+      style.fillOpacity = 0.5;
+    }
+
+    return style;
+  }, []);
+
+  const handleHexClick = useCallback((hexId) => {
+    setSelectedHex((prev) => (prev === hexId ? null : hexId));
+  }, []);
 
   const generateFullHexOverlay = useCallback((lat, lng, targetZoom) => {
     const resolution = clampResolution(targetZoom);
-    const radius = computeRadius(targetZoom);
+    let radius = computeRadius(targetZoom);
     const { lat: latThreshold, lng: lngThreshold } = computeThresholds(targetZoom);
     const centerHex = h3.latLngToCell(lat, lng, resolution);
-    const cluster = h3.gridDisk(centerHex, radius);
+    let cluster = h3.gridDisk(centerHex, radius);
 
-    const filtered = cluster
-      .map((hexId) => {
-        const boundary = h3
-          .cellToBoundary(hexId)
-          .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
-        const centroid = boundary.reduce(
-          (acc, [boundaryLat, boundaryLng]) => {
-            acc.lat += boundaryLat;
-            acc.lng += boundaryLng;
-            return acc;
-          },
-          { lat: 0, lng: 0 },
-        );
-        const pointsCount = boundary.length || 1;
-        const centroidLat = centroid.lat / pointsCount;
-        const centroidLng = centroid.lng / pointsCount;
-
-        return {
-          hexId,
-          boundary,
-          centroidLat,
-          centroidLng,
-        };
-      })
-      .filter(({ centroidLat, centroidLng }) =>
-        Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold,
-      );
-
-    if (filtered.length > 0) {
-      setHexes(filtered.map(({ hexId, boundary }) => ({ hexId, boundary })));
-      return;
+    while (cluster.length < MAX_HEXES && radius < 12) {
+      radius += 1;
+      cluster = h3.gridDisk(centerHex, radius);
     }
 
-    setHexes(
-      cluster.map((hexId) => ({
+    const candidates = cluster.map((hexId) => {
+      const boundary = h3
+        .cellToBoundary(hexId)
+        .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
+      const centroid = boundary.reduce(
+        (acc, [boundaryLat, boundaryLng]) => {
+          acc.lat += boundaryLat;
+          acc.lng += boundaryLng;
+          return acc;
+        },
+        { lat: 0, lng: 0 },
+      );
+      const pointsCount = boundary.length || 1;
+      const centroidLat = centroid.lat / pointsCount;
+      const centroidLng = centroid.lng / pointsCount;
+      const distance = Math.hypot(centroidLat - lat, centroidLng - lng);
+
+      return {
         hexId,
-        boundary: h3
-          .cellToBoundary(hexId)
-          .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
-      })),
+        boundary,
+        centroidLat,
+        centroidLng,
+        distance,
+      };
+    });
+
+    const filtered = candidates.filter(({ centroidLat, centroidLng }) =>
+      Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold,
     );
+
+    const source = filtered.length >= MAX_HEXES ? filtered : candidates;
+    const sorted = [...source].sort((a, b) => a.distance - b.distance);
+    const limited = sorted.slice(0, MAX_HEXES);
+    const neutralCount = limited.length > 0 ? Math.max(1, Math.floor(limited.length * NEUTRAL_RATIO)) : 0;
+    const neutralStartIndex = Math.max(limited.length - neutralCount, 0);
+
+    const shapedHexes = limited.map(({ hexId, boundary }, index) => ({
+      hexId,
+      boundary,
+      status: index >= neutralStartIndex ? 'neutral' : 'active',
+    }));
+
+    setHexes(shapedHexes);
   }, []);
 
   const randomizeCoords = useCallback(() => {
@@ -146,6 +188,7 @@ const RiskMap = () => {
     const lng = random.real(-180, 180, true);
 
     setCenter([lat, lng]);
+    setSelectedHex(null);
     generateFullHexOverlay(lat, lng, zoom);
   }, [generateFullHexOverlay, random, zoom]);
 
@@ -153,6 +196,7 @@ const RiskMap = () => {
     (event) => {
       const newZoom = Number(event.target.value);
       setZoom(newZoom);
+      setSelectedHex(null);
       generateFullHexOverlay(center[0], center[1], newZoom);
     },
     [center, generateFullHexOverlay],
@@ -187,8 +231,13 @@ const RiskMap = () => {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
-        {hexes.map(({ hexId, boundary }) => (
-          <Polygon key={hexId} positions={boundary} pathOptions={HEX_STYLE} />
+        {hexes.map(({ hexId, boundary, status }) => (
+          <Polygon
+            key={hexId}
+            positions={boundary}
+            pathOptions={getHexPathOptions(status, hexId === selectedHex)}
+            eventHandlers={{ click: () => handleHexClick(hexId) }}
+          />
         ))}
       </MapContainer>
     </div>
