@@ -44,7 +44,7 @@ const ZOOM_LEVELS = [
   { value: 19, label: '19 — Highway details' },
 ];
 
-const BASE_ZOOM = 7;
+const BASE_ZOOM = 5;
 const MAX_HEXES = 128;
 const NEUTRAL_RATIO = 0.125;
 
@@ -61,7 +61,7 @@ const MapViewSynchronizer = ({ center, zoom }) => {
 const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
 
 const RiskMap = () => {
-  const [center, setCenter] = useState([0, 0]);
+  const [center, setCenter] = useState([48.8566, 2.3522]); // Paris coordinates
   const [zoom, setZoom] = useState(BASE_ZOOM);
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);

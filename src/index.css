@@ -63,7 +63,7 @@ body {
 .map-aspect {
   width: 100%;
   position: relative;
-  padding-bottom: 56.25%;
+  padding-bottom: 35%;
 }
 
 .map-wrapper {
@@ -124,6 +124,6 @@ body {
   }
 
   .map-aspect {
-    padding-bottom: 60%;
+    padding-bottom: 35%;
   }
 }
