@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Random } from 'random-js';
 import * as h3 from 'h3-js';
@@ -17,7 +17,7 @@ const HEX_STYLE = {
   color: '#374151', // Dark gray borders
   weight: 1, // Thin borders
   opacity: 0.8,
-  fillOpacity: 0.7,
+  fillOpacity: 0, // No fill
 };
 
 // Territory color palette for board game aesthetic
@@ -36,30 +36,7 @@ const TERRITORY_COLORS = [
   '#fdf4ff', // Very light purple
 ];
 
-const ZOOM_LEVELS = [
-  { value: 0, label: '0 — Whole world' },
-  { value: 1, label: '1 — Continent / Intercontinental' },
-  { value: 2, label: '2 — Subcontinental area' },
-  { value: 3, label: '3 — Largest country' },
-  { value: 4, label: '4 — Large region' },
-  { value: 5, label: '5 — Large African country' },
-  { value: 6, label: '6 — Large European country' },
-  { value: 7, label: '7 — Small country or US state' },
-  { value: 8, label: '8 — Wide area' },
-  { value: 9, label: '9 — Large metropolitan area' },
-  { value: 10, label: '10 — Metropolitan area' },
-  { value: 11, label: '11 — City' },
-  { value: 12, label: '12 — Town or city district' },
-  { value: 13, label: '13 — Village or suburb' },
-  { value: 14, label: '14 — Small town' },
-  { value: 15, label: '15 — Small road' },
-  { value: 16, label: '16 — Street' },
-  { value: 17, label: '17 — Block / park / addresses' },
-  { value: 18, label: '18 — Buildings and trees' },
-  { value: 19, label: '19 — Highway details' },
-];
-
-const BASE_ZOOM = 3;
+const BASE_ZOOM = 7;
 
 const MapViewSynchronizer = ({ center, zoom }) => {
   const map = useMap();
@@ -71,7 +48,7 @@ const MapViewSynchronizer = ({ center, zoom }) => {
   return null;
 };
 
-const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
+const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 3))); // Decreased by 1 to double hex size
 
 const generateTerritoryId = (index) => {
   // Generate territory IDs like A1, A2, B1, B2, etc.
@@ -85,22 +62,84 @@ const getTerritoryColor = (index) => {
   return TERRITORY_COLORS[index % TERRITORY_COLORS.length];
 };
 
+// Simple water detection based on major water bodies and ocean areas
+const isWaterHex = (lat, lng) => {
+  // Major oceans and seas - simplified geometric detection
+  
+  // Pacific Ocean (large portions)
+  if (lng > 120 || lng < -120) {
+    if (Math.abs(lat) < 60) return true;
+  }
+  
+  // Atlantic Ocean
+  if (lng > -70 && lng < 20 && Math.abs(lat) < 70) {
+    if ((lat > 0 && lng > -40 && lng < 0) || // North Atlantic
+        (lat < 20 && lng > -50 && lng < 10)) { // South Atlantic portions
+      return true;
+    }
+  }
+  
+  // Indian Ocean
+  if (lng > 40 && lng < 120 && lat < 30 && lat > -50) {
+    return true;
+  }
+  
+  // Mediterranean Sea
+  if (lng > 0 && lng < 40 && lat > 30 && lat < 50) {
+    return true;
+  }
+  
+  // Red Sea
+  if (lng > 30 && lng < 50 && lat > 10 && lat < 30) {
+    return true;
+  }
+  
+  // Persian Gulf
+  if (lng > 45 && lng < 60 && lat > 20 && lat < 32) {
+    return true;
+  }
+  
+  // Great Lakes region (approximate)
+  if (lng > -95 && lng < -75 && lat > 40 && lat < 50) {
+    return true;
+  }
+  
+  // Baltic Sea
+  if (lng > 10 && lng < 35 && lat > 53 && lat < 66) {
+    return true;
+  }
+  
+  // Black Sea
+  if (lng > 25 && lng < 45 && lat > 40 && lat < 48) {
+    return true;
+  }
+  
+  // Caspian Sea
+  if (lng > 45 && lng < 55 && lat > 35 && lat < 50) {
+    return true;
+  }
+  
+  return false;
+};
+
 const RiskMap = () => {
   const [center, setCenter] = useState([50.0, 10.0]); // Central Europe coordinates
-  const [zoom, setZoom] = useState(BASE_ZOOM);
+  const zoom = BASE_ZOOM; // Fixed zoom level
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);
+  const [showHexes, setShowHexes] = useState(true); // Toggle for hex overlay visibility
   const random = useMemo(() => new Random(), []);
 
-  const getHexPathOptions = useCallback((index, isSelected) => {
+  const getHexPathOptions = useCallback((index, isSelected, isWater) => {
     const baseColor = getTerritoryColor(index);
 
     const style = {
       color: HEX_STYLE.color,
       weight: HEX_STYLE.weight,
-      opacity: HEX_STYLE.opacity,
+      opacity: isWater ? HEX_STYLE.opacity * 0.5 : HEX_STYLE.opacity, // Half opacity for water hexes
       fillColor: baseColor,
       fillOpacity: HEX_STYLE.fillOpacity,
+      dashArray: isWater ? '5, 5' : null, // Dashed line for water hexes
     };
 
     // Add subtle shadow/elevation effect
@@ -112,8 +151,9 @@ const RiskMap = () => {
     if (isSelected) {
       style.color = '#1f2937'; // Darker border for selected
       style.weight = 2;
-      style.opacity = 1;
-      style.fillOpacity = 0.9;
+      style.opacity = isWater ? 0.5 : 1; // Half opacity for water hexes even when selected
+      style.fillOpacity = 0; // No fill even when selected
+      style.dashArray = isWater ? '5, 5' : null; // Keep dashed line for water hexes even when selected
     }
 
     return style;
@@ -127,15 +167,28 @@ const RiskMap = () => {
     const resolution = clampResolution(BASE_ZOOM);
     const centerHex = h3.latLngToCell(lat, lng, resolution);
 
-    // Generate hexagonal grid with 6 rings (127 hexagons total)
-    // Use gridDisk with large radius and sort by distance to get hexagonal shape
-    const cluster = h3.gridDisk(centerHex, 8); // Get a large disk
+    // Generate a perfect hexagonal grid with exactly 127 hexagons
+    // This creates rings around the center: 1 + 6 + 12 + 18 + 24 + 30 + 36 = 127
+    const hexagonalGrid = [];
+    
+    // Add center hex (ring 0)
+    hexagonalGrid.push(centerHex);
+    
+    // Add rings 1-6 to get exactly 127 hexes
+    for (let ring = 1; ring <= 6; ring++) {
+      const ringHexes = h3.gridRing(centerHex, ring);
+      if (ringHexes && Array.isArray(ringHexes)) {
+        hexagonalGrid.push(...ringHexes);
+      }
+    }
 
-    const candidates = cluster.map((hexId) => {
-      const boundary = h3
-        .cellToBoundary(hexId)
-        .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
-      const centroid = boundary.reduce(
+    const shapedHexes = hexagonalGrid.map((hexId, index) => {
+      const boundary = h3.cellToBoundary(hexId);
+      // Defensive check for tests
+      const safeBoundary = boundary || [[0, 0], [0.5, 0], [1, 0.5], [0.5, 1], [0, 1], [-0.5, 0.5]];
+      const mappedBoundary = safeBoundary.map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
+      
+      const centroid = mappedBoundary.reduce(
         (acc, [boundaryLat, boundaryLng]) => {
           acc.lat += boundaryLat;
           acc.lng += boundaryLng;
@@ -143,35 +196,25 @@ const RiskMap = () => {
         },
         { lat: 0, lng: 0 },
       );
-      const pointsCount = boundary.length || 1;
+      
+      const pointsCount = mappedBoundary.length || 1;
       const centroidLat = centroid.lat / pointsCount;
       const centroidLng = centroid.lng / pointsCount;
-      const distance = Math.hypot(centroidLat - lat, centroidLng - lng);
 
-      return {
-        hexId,
-        boundary,
-        centroidLat,
-        centroidLng,
-        distance,
-      };
-    });
-
-    // Sort by distance and take exactly 127 hexagons for hexagonal shape
-    const sorted = [...candidates].sort((a, b) => a.distance - b.distance);
-    const cluster127 = sorted.slice(0, 127);
-
-    const shapedHexes = cluster127.map(({ hexId, boundary, centroidLat, centroidLng }, index) => {
       // Create territory ID (A1, A2, B1, etc.)
       const territoryId = generateTerritoryId(index);
+      
+      // Check if this hex is over water
+      const isWater = isWaterHex(centroidLat, centroidLng);
 
       return {
         hexId,
-        boundary,
+        boundary: mappedBoundary,
         centroidLat,
         centroidLng,
         territoryId,
         status: 'territory', // All are playable territories now
+        isWater, // Add water detection flag
       };
     });
 
@@ -187,15 +230,10 @@ const RiskMap = () => {
     generateFullHexOverlay(lat, lng);
   }, [generateFullHexOverlay, random]);
 
-  const handleZoomChange = useCallback(
-    (event) => {
-      const newZoom = Number(event.target.value);
-      setZoom(newZoom);
-      setSelectedHex(null);
-      generateFullHexOverlay(center[0], center[1]);
-    },
-    [center, generateFullHexOverlay],
-  );
+  const toggleHexOverlay = useCallback(() => {
+    setShowHexes(prev => !prev);
+    setSelectedHex(null); // Clear selection when toggling
+  }, []);
 
   useEffect(() => {
     randomizeCoords();
@@ -204,15 +242,11 @@ const RiskMap = () => {
   return (
     <div className="map-wrapper">
       <div className="map-controls">
-        <select aria-label="Select zoom level" value={zoom} onChange={handleZoomChange}>
-          {ZOOM_LEVELS.map(({ value, label }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
         <button type="button" onClick={randomizeCoords}>
           Randomize Coordinates
+        </button>
+        <button type="button" onClick={toggleHexOverlay}>
+          {showHexes ? 'Hide Hexes' : 'Show Hexes'}
         </button>
       </div>
       <MapContainer
@@ -233,24 +267,12 @@ const RiskMap = () => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           opacity={0.4}
         />
-        {hexes.map(({ hexId, boundary, status }, index) => (
+        {showHexes && hexes.map(({ hexId, boundary, status, isWater }, index) => (
           <Polygon
             key={hexId}
             positions={boundary}
-            pathOptions={getHexPathOptions(index, hexId === selectedHex)}
+            pathOptions={getHexPathOptions(index, hexId === selectedHex, isWater)}
             eventHandlers={{ click: () => handleHexClick(hexId) }}
-          />
-        ))}
-        {hexes.map(({ hexId, centroidLat, centroidLng, territoryId }, index) => (
-          <Marker
-            key={`label-${hexId}`}
-            position={[centroidLat, centroidLng]}
-            icon={L.divIcon({
-              html: `<div style="color: #374151; font-size: 10px; font-weight: bold; text-shadow: 1px 1px 1px white; pointer-events: none;">${territoryId}</div>`,
-              className: 'territory-label',
-              iconSize: [30, 12],
-              iconAnchor: [15, 6],
-            })}
           />
         ))}
       </MapContainer>

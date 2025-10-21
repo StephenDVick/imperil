@@ -1,3 +1,20 @@
+// Mock H3 first, before any imports
+jest.mock('h3-js', () => ({
+  latLngToCell: jest.fn((lat, lng, resolution) => `hex_${lat}_${lng}_${resolution}`),
+  gridRing: jest.fn((centerHex, ring) => {
+    // Always return an array, even for ring 0 (which normally has no hexes)
+    const hexes = [];
+    const numHexes = ring === 0 ? 0 : ring * 6;
+    for (let i = 0; i < numHexes; i++) {
+      hexes.push(`${centerHex}_ring${ring}_${i}`);
+    }
+    return hexes;
+  }),
+  cellToBoundary: jest.fn((hexId) => [
+    [0, 0], [0.5, 0], [1, 0.5], [0.5, 1], [0, 1], [-0.5, 0.5]
+  ]),
+}));
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../App';
 import RiskMap from '../components/RiskMap';
@@ -37,11 +54,14 @@ jest.mock('react-leaflet', () => ({
       {...props}
     />
   ),
-  Polygon: ({ positions, pathOptions, ...props }) => (
+  Polygon: ({ positions, pathOptions, eventHandlers, ...props }) => (
     <div
       data-testid="polygon"
       data-path-color={pathOptions?.color}
       data-path-weight={pathOptions?.weight}
+      data-path-opacity={pathOptions?.opacity}
+      data-path-dash-array={pathOptions?.dashArray}
+      onClick={eventHandlers?.click}
       {...props}
     />
   ),
@@ -100,7 +120,7 @@ describe('Phase 1 Smoke Tests', () => {
       expect(mapContainer.dataset.center).toBe('10,20');
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('3');
+      expect(mapContainer.dataset.zoom).toBe('7'); // Updated to fixed zoom level
     });
     expect(mapContainer.dataset.styleHeight).toBe('100%');
     expect(mapContainer.dataset.styleWidth).toBe('100%');
@@ -114,7 +134,7 @@ describe('Phase 1 Smoke Tests', () => {
     expect(polygons[0].dataset.pathColor).toBe('#1f2937');
   });
 
-  test('RiskMap randomizes on demand', async () => {
+  test('RiskMap randomizes coordinates without changing zoom', async () => {
     render(<RiskMap />);
     const button = screen.getByRole('button', { name: 'Randomize Coordinates' });
     const mapContainer = await screen.findByTestId('leaflet-map');
@@ -123,7 +143,7 @@ describe('Phase 1 Smoke Tests', () => {
       expect(mapContainer.dataset.center).toBe('10,20');
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('3');
+      expect(mapContainer.dataset.zoom).toBe('7'); // Fixed zoom level
     });
 
     fireEvent.click(button);
@@ -131,26 +151,64 @@ describe('Phase 1 Smoke Tests', () => {
     await waitFor(() => {
       expect(mapContainer.dataset.center).toBe('30,40');
     });
-    expect(mapContainer.dataset.zoom).toBe('3');
+    expect(mapContainer.dataset.zoom).toBe('7'); // Zoom should remain the same
   });
 
-  test('RiskMap updates zoom from dropdown', async () => {
+  test('RiskMap renders hex overlay toggle button', async () => {
     render(<RiskMap />);
+    
+    const toggleButton = screen.getByRole('button', { name: 'Hide Hexes' });
+    expect(toggleButton).toBeInTheDocument();
+    
+    // Initially hexes should be visible
+    const polygons = await screen.findAllByTestId('polygon');
+    expect(polygons.length).toBeGreaterThan(0);
+  });
 
-    const mapContainer = await screen.findByTestId('leaflet-map');
-    const select = screen.getByRole('combobox', { name: 'Select zoom level' });
-
-  expect(select).toHaveDisplayValue('3 — Largest country');
-
-    fireEvent.change(select, { target: { value: '8' } });
-
+  test('RiskMap toggles hex overlay visibility', async () => {
+    render(<RiskMap />);
+    
+    const toggleButton = screen.getByRole('button', { name: 'Hide Hexes' });
+    
+    // Initially hexes should be visible
+    let polygons = await screen.findAllByTestId('polygon');
+    expect(polygons.length).toBeGreaterThan(0);
+    
+    // Click to hide hexes
+    fireEvent.click(toggleButton);
+    
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('8');
+      expect(screen.getByRole('button', { name: 'Show Hexes' })).toBeInTheDocument();
     });
+    
+    // Hexes should be hidden
+    polygons = screen.queryAllByTestId('polygon');
+    expect(polygons.length).toBe(0);
+    
+    // Click to show hexes again
+    const showButton = screen.getByRole('button', { name: 'Show Hexes' });
+    fireEvent.click(showButton);
+    
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Hide Hexes' })).toBeInTheDocument();
+    });
+    
+    // Hexes should be visible again
+    polygons = await screen.findAllByTestId('polygon');
+    expect(polygons.length).toBeGreaterThan(0);
+  });
 
-    const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('0 — Whole world');
-    expect(options[options.length - 1]).toHaveTextContent('19 — Highway details');
+  test('RiskMap handles hex selection', async () => {
+    render(<RiskMap />);
+    
+    const polygons = await screen.findAllByTestId('polygon');
+    expect(polygons.length).toBeGreaterThan(0);
+    
+    // Click on first hex
+    fireEvent.click(polygons[0]);
+    
+    // Verify hex click is handled (this test mainly ensures no errors occur)
+    expect(polygons[0]).toBeInTheDocument();
   });
 
   test('App renders RiskMap and title', async () => {
