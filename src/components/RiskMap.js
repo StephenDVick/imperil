@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Random } from 'random-js';
 import * as h3 from 'h3-js';
@@ -42,8 +42,17 @@ const ZOOM_LEVELS = [
   { value: 17, label: '17 — Block / park / addresses' },
   { value: 18, label: '18 — Buildings and trees' },
   { value: 19, label: '19 — Highway details' },
-  { value: 20, label: '20 — Mid-sized building' },
 ];
+
+const MapViewSynchronizer = ({ center, zoom }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(center, zoom, { animate: true });
+  }, [center, map, zoom]);
+
+  return null;
+};
 
 const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
 
@@ -92,7 +101,7 @@ const RiskMap = () => {
     const filtered = cluster
       .map((hexId) => {
         const boundary = h3
-          .cellToBoundary(hexId, true)
+          .cellToBoundary(hexId)
           .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]);
         const centroid = boundary.reduce(
           (acc, [boundaryLat, boundaryLng]) => {
@@ -126,7 +135,7 @@ const RiskMap = () => {
       cluster.map((hexId) => ({
         hexId,
         boundary: h3
-          .cellToBoundary(hexId, true)
+          .cellToBoundary(hexId)
           .map(([boundaryLat, boundaryLng]) => [boundaryLat, boundaryLng]),
       })),
     );
@@ -173,6 +182,7 @@ const RiskMap = () => {
         style={{ height: '100%', width: '100%' }}
         data-testid="leaflet-map"
       >
+        <MapViewSynchronizer center={center} zoom={zoom} />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

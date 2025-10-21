@@ -99,7 +99,7 @@ describe('Phase 1 Smoke Tests', () => {
 
     const options = screen.getAllByRole('option');
     expect(options[0]).toHaveTextContent('0 — Whole world');
-    expect(options[options.length - 1]).toHaveTextContent('20 — Mid-sized building');
+    expect(options[options.length - 1]).toHaveTextContent('19 — Highway details');
   });
 
   test('App renders RiskMap and title', async () => {

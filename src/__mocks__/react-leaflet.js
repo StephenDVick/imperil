@@ -35,9 +35,16 @@ const Polygon = ({ positions, pathOptions, children }) =>
     children,
   );
 
+const mockMapInstance = {
+  setView: () => {},
+};
+
+const useMap = () => mockMapInstance;
+
 module.exports = {
   __esModule: true,
   MapContainer,
   TileLayer,
   Polygon,
+  useMap,
 };
