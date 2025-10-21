@@ -44,6 +44,7 @@ const ZOOM_LEVELS = [
   { value: 19, label: '19 — Highway details' },
 ];
 
+const BASE_ZOOM = 7;
 const MAX_HEXES = 128;
 const NEUTRAL_RATIO = 0.125;
 
@@ -59,41 +60,12 @@ const MapViewSynchronizer = ({ center, zoom }) => {
 
 const clampResolution = (zoom) => Math.max(0, Math.min(12, Math.round(zoom - 2)));
 
-const computeRadius = (zoom) => {
-  if (zoom <= 3) return 2;
-  if (zoom <= 6) return 3;
-  if (zoom <= 9) return 4;
-  if (zoom <= 12) return 5;
-  if (zoom <= 15) return 6;
-  if (zoom <= 18) return 7;
-  return 8;
-};
-
-const computeThresholds = (zoom) => {
-  if (zoom <= 3) {
-    return { lat: 60, lng: 120 };
-  }
-  if (zoom <= 6) {
-    return { lat: 30, lng: 60 };
-  }
-  if (zoom <= 10) {
-    return { lat: 12, lng: 24 };
-  }
-  if (zoom <= 14) {
-    return { lat: 6, lng: 12 };
-  }
-  if (zoom <= 17) {
-    return { lat: 3, lng: 6 };
-  }
-  return { lat: 1.5, lng: 3 };
-};
-
 const RiskMap = () => {
-  const random = useMemo(() => new Random(), []);
   const [center, setCenter] = useState([0, 0]);
-  const [zoom, setZoom] = useState(16);
+  const [zoom, setZoom] = useState(BASE_ZOOM);
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);
+  const random = useMemo(() => new Random(), []);
 
   const getHexPathOptions = useCallback((status, isSelected) => {
     const style = {
@@ -126,10 +98,9 @@ const RiskMap = () => {
     setSelectedHex((prev) => (prev === hexId ? null : hexId));
   }, []);
 
-  const generateFullHexOverlay = useCallback((lat, lng, targetZoom) => {
-    const resolution = clampResolution(targetZoom);
-    let radius = computeRadius(targetZoom);
-    const { lat: latThreshold, lng: lngThreshold } = computeThresholds(targetZoom);
+  const generateFullHexOverlay = useCallback((lat, lng) => {
+    const resolution = clampResolution(BASE_ZOOM);
+    let radius = 3;
     const centerHex = h3.latLngToCell(lat, lng, resolution);
     let cluster = h3.gridDisk(centerHex, radius);
 
@@ -164,12 +135,7 @@ const RiskMap = () => {
       };
     });
 
-    const filtered = candidates.filter(({ centroidLat, centroidLng }) =>
-      Math.abs(centroidLat - lat) <= latThreshold && Math.abs(centroidLng - lng) <= lngThreshold,
-    );
-
-    const source = filtered.length >= MAX_HEXES ? filtered : candidates;
-    const sorted = [...source].sort((a, b) => a.distance - b.distance);
+    const sorted = [...candidates].sort((a, b) => a.distance - b.distance);
     const limited = sorted.slice(0, MAX_HEXES);
     const neutralCount = limited.length > 0 ? Math.max(1, Math.floor(limited.length * NEUTRAL_RATIO)) : 0;
     const neutralStartIndex = Math.max(limited.length - neutralCount, 0);
@@ -189,15 +155,15 @@ const RiskMap = () => {
 
     setCenter([lat, lng]);
     setSelectedHex(null);
-    generateFullHexOverlay(lat, lng, zoom);
-  }, [generateFullHexOverlay, random, zoom]);
+    generateFullHexOverlay(lat, lng);
+  }, [generateFullHexOverlay, random]);
 
   const handleZoomChange = useCallback(
     (event) => {
       const newZoom = Number(event.target.value);
       setZoom(newZoom);
       setSelectedHex(null);
-      generateFullHexOverlay(center[0], center[1], newZoom);
+      generateFullHexOverlay(center[0], center[1]);
     },
     [center, generateFullHexOverlay],
   );
@@ -224,6 +190,12 @@ const RiskMap = () => {
         center={center}
         zoom={zoom}
         style={{ height: '100%', width: '100%' }}
+        dragging={false}
+        scrollWheelZoom={false}
+        doubleClickZoom={false}
+        touchZoom={false}
+        boxZoom={false}
+        keyboard={false}
         data-testid="leaflet-map"
       >
         <MapViewSynchronizer center={center} zoom={zoom} />
