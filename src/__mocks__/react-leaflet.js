@@ -31,6 +31,11 @@ const Polygon = ({ positions, pathOptions, children }) =>
       'data-testid': 'polygon',
       'data-positions': JSON.stringify(positions),
       'data-path-color': pathOptions?.color,
+      'data-path-weight': pathOptions?.weight,
+      'data-path-opacity': pathOptions?.opacity,
+      'data-path-dash-array': pathOptions?.dashArray,
+      'data-path-fill-color': pathOptions?.fillColor,
+      'data-path-fill-opacity': pathOptions?.fillOpacity,
     },
     children,
   );

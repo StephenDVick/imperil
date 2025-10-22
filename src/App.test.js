@@ -34,6 +34,9 @@ jest.mock('react-leaflet', () => ({
   Marker: ({ position, icon, ...props }) => (
     <div data-testid="marker" data-position={JSON.stringify(position)} {...props} />
   ),
+  Popup: ({ children, ...props }) => (
+    <div data-testid="popup" {...props}>{children}</div>
+  ),
   useMap: () => ({
     flyTo: jest.fn(),
     getBounds: jest.fn(),

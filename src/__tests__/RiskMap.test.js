@@ -1,12 +1,27 @@
 // Mock H3 first, before any imports
 jest.mock('h3-js', () => ({
-  latLngToCell: jest.fn((lat, lng, resolution) => `hex_${lat}_${lng}_${resolution}`),
+  latLngToCell: jest.fn((lat, lng, resolution) => {
+    // Return a valid-looking hex ID
+    const latInt = Math.floor(Math.abs(lat));
+    const lngInt = Math.floor(Math.abs(lng));
+    return `8${latInt}${lngInt}a1b2c3d4e5f6`;
+  }),
   gridRing: jest.fn((centerHex, ring) => {
     // Always return an array, even for ring 0 (which normally has no hexes)
     const hexes = [];
     const numHexes = ring === 0 ? 0 : ring * 6;
     for (let i = 0; i < numHexes; i++) {
       hexes.push(`${centerHex}_ring${ring}_${i}`);
+    }
+    return hexes;
+  }),
+  gridDisk: jest.fn((centerHex, distance) => {
+    // Return center hex and neighbors
+    const hexes = [centerHex];
+    if (distance >= 1) {
+      for (let i = 0; i < 6; i++) {
+        hexes.push(`${centerHex}_neighbor_${i}`);
+      }
     }
     return hexes;
   }),
@@ -68,6 +83,9 @@ jest.mock('react-leaflet', () => ({
   Marker: ({ position, icon, ...props }) => (
     <div data-testid="marker" data-position={JSON.stringify(position)} {...props} />
   ),
+  Popup: ({ children, ...props }) => (
+    <div data-testid="popup" {...props}>{children}</div>
+  ),
   useMap: () => ({
     flyTo: jest.fn(),
     getBounds: jest.fn(),
@@ -102,6 +120,10 @@ describe('Phase 1 Smoke Tests', () => {
     expect(tileLayer.dataset.url).toBe('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
     expect(tileLayer.dataset.attribution).toContain('OpenStreetMap');
 
+    // Enable hexes for this test
+    const showHexesButton = screen.getByRole('button', { name: 'Show Hexes' });
+    fireEvent.click(showHexesButton);
+
     const polygons = await screen.findAllByTestId('polygon');
     expect(polygons.length).toBeGreaterThan(0);
     expect(polygons[0].dataset.pathColor).toBe('#1f2937');
@@ -110,49 +132,53 @@ describe('Phase 1 Smoke Tests', () => {
   test('RiskMap renders hex overlay toggle button', async () => {
     render(<RiskMap />);
     
-    const toggleButton = screen.getByRole('button', { name: 'Hide Hexes' });
+    const toggleButton = screen.getByRole('button', { name: 'Show Hexes' });
     expect(toggleButton).toBeInTheDocument();
     
-    // Initially hexes should be visible
-    const polygons = await screen.findAllByTestId('polygon');
-    expect(polygons.length).toBeGreaterThan(0);
+    // Initially hexes should be hidden
+    const polygons = screen.queryAllByTestId('polygon');
+    expect(polygons.length).toBe(0);
   });
 
   test('RiskMap toggles hex overlay visibility', async () => {
     render(<RiskMap />);
     
-    const toggleButton = screen.getByRole('button', { name: 'Hide Hexes' });
+    const toggleButton = screen.getByRole('button', { name: 'Show Hexes' });
     
-    // Initially hexes should be visible
-    let polygons = await screen.findAllByTestId('polygon');
-    expect(polygons.length).toBeGreaterThan(0);
-    
-    // Click to hide hexes
-    fireEvent.click(toggleButton);
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show Hexes' })).toBeInTheDocument();
-    });
-    
-    // Hexes should be hidden
-    polygons = screen.queryAllByTestId('polygon');
+    // Initially hexes should be hidden
+    let polygons = screen.queryAllByTestId('polygon');
     expect(polygons.length).toBe(0);
     
-    // Click to show hexes again
-    const showButton = screen.getByRole('button', { name: 'Show Hexes' });
-    fireEvent.click(showButton);
+    // Click to show hexes
+    fireEvent.click(toggleButton);
     
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Hide Hexes' })).toBeInTheDocument();
     });
     
-    // Hexes should be visible again
+    // Hexes should be visible
     polygons = await screen.findAllByTestId('polygon');
     expect(polygons.length).toBeGreaterThan(0);
+    
+    // Click to hide hexes again
+    const hideButton = screen.getByRole('button', { name: 'Hide Hexes' });
+    fireEvent.click(hideButton);
+    
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Show Hexes' })).toBeInTheDocument();
+    });
+    
+    // Hexes should be hidden again
+    polygons = screen.queryAllByTestId('polygon');
+    expect(polygons.length).toBe(0);
   });
 
   test('RiskMap handles hex selection', async () => {
     render(<RiskMap />);
+    
+    // Enable hexes for this test
+    const showHexesButton = screen.getByRole('button', { name: 'Show Hexes' });
+    fireEvent.click(showHexesButton);
     
     const polygons = await screen.findAllByTestId('polygon');
     expect(polygons.length).toBeGreaterThan(0);
