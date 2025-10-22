@@ -108,10 +108,10 @@ describe('Phase 1 Smoke Tests', () => {
 
     const mapContainer = await screen.findByTestId('leaflet-map');
     await waitFor(() => {
-      expect(mapContainer.dataset.center).toBe('38,-80'); // Eastern United States default
+      expect(mapContainer.dataset.center).toBe('0,0'); // World default
     });
     await waitFor(() => {
-      expect(mapContainer.dataset.zoom).toBe('7'); // Updated to fixed zoom level
+      expect(mapContainer.dataset.zoom).toBe('1'); // World zoom level
     });
     expect(mapContainer.dataset.styleHeight).toBe('100%');
     expect(mapContainer.dataset.styleWidth).toBe('100%');

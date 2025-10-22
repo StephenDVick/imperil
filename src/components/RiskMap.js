@@ -104,8 +104,6 @@ const MapViewSynchronizer = ({ center, zoom }) => {
   return null;
 };
 
-const clampResolution = (zoom) => 0; // Fixed at resolution 0 for largest hexes (target ~128 hexes)
-
 const generateTerritoryId = (index) => {
   // Generate territory IDs like A1, A2, B1, B2, etc.
   const letters = 'ABCDEFGH';
@@ -222,12 +220,13 @@ const isWaterHex = (lat, lng) => {
 };
 
 const RiskMap = () => {
-  const [center, setCenter] = useState([38.0, -80.0]); // Default to Eastern United States
-  const zoom = BASE_ZOOM; // Fixed zoom level
+  const [center, setCenter] = useState([0, 0]); // Default to World
+  const [zoom, setZoom] = useState(1); // Dynamic zoom level - 1 for world view
   const [hexes, setHexes] = useState([]);
   const [selectedHex, setSelectedHex] = useState(null);
   const [showHexes, setShowHexes] = useState(false); // Toggle for hex overlay visibility - default to off
-  const [selectedTerritory, setSelectedTerritory] = useState('Eastern United States');
+  const [selectedTerritory, setSelectedTerritory] = useState('World');
+  const [hexResolution, setHexResolution] = useState(0); // H3 resolution for hex size (0 = largest)
 
   const getHexPathOptions = useCallback((index, isSelected, isWater) => {
     const baseColor = getTerritoryColor(index);
@@ -262,42 +261,115 @@ const RiskMap = () => {
     setSelectedHex((prev) => (prev === hexId ? null : hexId));
   }, []);
 
-  const generateFullHexOverlay = useCallback((lat, lng) => {
-    try {
-      const startTime = performance.now();
-      const resolution = clampResolution(BASE_ZOOM);
-      
-      // Generate hexes covering the entire visible world using a comprehensive grid approach
+  const calculateOptimalResolution = useCallback((isWorldView = true) => {
+    if (!isWorldView) {
+      // For territory view, allow higher resolutions since gridDisk gives small hex counts
+      return 3; // Use finest resolution for territories
+    }
+    
+    // For world view, find resolution that keeps ≤ 128 hexes
+    for (let testResolution = 3; testResolution >= 0; testResolution--) {
       const hexSet = new Set();
-    
-    // For full world coverage, sample every ~8-10 degrees (balanced coverage vs performance)
-    const latStep = 8;
-    const lngStep = 8;
-    
-    // Cover the globe from -85 to 85 latitude (avoid extreme poles)
-    for (let sampleLat = -85; sampleLat <= 85; sampleLat += latStep) {
-      // Adjust longitude step based on latitude (fewer samples needed near poles)
-      const latFactor = Math.cos((sampleLat * Math.PI) / 180);
-      const adjustedLngStep = Math.max(lngStep, lngStep / Math.max(latFactor, 0.3));
       
-      for (let sampleLng = -180; sampleLng < 180; sampleLng += adjustedLngStep) {
-        try {
-          const hexId = h3.latLngToCell(sampleLat, sampleLng, resolution);
-          if (hexId) {
-            hexSet.add(hexId);
-            // Fill gaps with immediate neighbors for better coverage
-            try {
-              const neighbors = h3.gridDisk(hexId, 1);
-              neighbors.forEach(neighborId => hexSet.add(neighborId));
-            } catch (e) {
-              // Skip if neighbors unavailable
+      // For full world coverage, sample every ~8-10 degrees
+      const latStep = 8;
+      const lngStep = 8;
+      
+      // Cover the globe from -85 to 85 latitude (avoid extreme poles)
+      for (let sampleLat = -85; sampleLat <= 85; sampleLat += latStep) {
+        // Adjust longitude step based on latitude (fewer samples needed near poles)
+        const latFactor = Math.cos((sampleLat * Math.PI) / 180);
+        const adjustedLngStep = Math.max(lngStep, lngStep / Math.max(latFactor, 0.3));
+        
+        for (let sampleLng = -180; sampleLng < 180; sampleLng += adjustedLngStep) {
+          try {
+            const hexId = h3.latLngToCell(sampleLat, sampleLng, testResolution);
+            if (hexId) {
+              hexSet.add(hexId);
+              // Fill gaps with immediate neighbors for better coverage
+              try {
+                const neighbors = h3.gridDisk(hexId, 1);
+                neighbors.forEach(neighborId => hexSet.add(neighborId));
+              } catch (e) {
+                // Skip if neighbors unavailable
+              }
             }
+          } catch (e) {
+            // Skip invalid coordinates
           }
-        } catch (e) {
-          // Skip invalid coordinates
         }
       }
+      
+      if (hexSet.size <= 128) {
+        return testResolution;
+      }
     }
+    
+    // Fallback to resolution 0 if all others exceed 128
+    return 0;
+  }, []);
+
+  const generateFullHexOverlay = useCallback((lat, lng, isWorldView = true) => {
+    try {
+      const startTime = performance.now();
+      // Automatically determine optimal resolution for ≤ 128 hexes
+      const resolution = calculateOptimalResolution(isWorldView);
+      
+      // Update the hex resolution state to reflect the automatic choice
+      setHexResolution(resolution);
+      
+      // Generate hexes based on view type
+      const hexSet = new Set();
+      
+      if (isWorldView) {
+        // For full world coverage, sample every ~8-10 degrees (balanced coverage vs performance)
+        const latStep = 8;
+        const lngStep = 8;
+        
+        // Cover the globe from -85 to 85 latitude (avoid extreme poles)
+        for (let sampleLat = -85; sampleLat <= 85; sampleLat += latStep) {
+          // Adjust longitude step based on latitude (fewer samples needed near poles)
+          const latFactor = Math.cos((sampleLat * Math.PI) / 180);
+          const adjustedLngStep = Math.max(lngStep, lngStep / Math.max(latFactor, 0.3));
+          
+          for (let sampleLng = -180; sampleLng < 180; sampleLng += adjustedLngStep) {
+            try {
+              const hexId = h3.latLngToCell(sampleLat, sampleLng, resolution);
+              if (hexId) {
+                hexSet.add(hexId);
+                // Fill gaps with immediate neighbors for better coverage
+                try {
+                  const neighbors = h3.gridDisk(hexId, 1);
+                  neighbors.forEach(neighborId => hexSet.add(neighborId));
+                } catch (e) {
+                  // Skip if neighbors unavailable
+                }
+              }
+            } catch (e) {
+              // Skip invalid coordinates
+            }
+          }
+        }
+      } else {
+        // For territory view, generate hexes around the specific location
+        // Use a smaller radius focused on the territory
+        const centerHex = h3.latLngToCell(lat, lng, resolution);
+        if (centerHex) {
+          // Get hexes within a reasonable radius around the territory
+          // Use gridDisk with radius 2-3 to get a good coverage around the territory
+          const radius = resolution <= 1 ? 3 : resolution <= 2 ? 2 : 1; // Smaller radius for finer resolutions
+          const territoryHexes = h3.gridDisk(centerHex, radius);
+          territoryHexes.forEach(hexId => hexSet.add(hexId));
+          
+          // Also add some neighboring rings for better coverage
+          const expandedHexes = h3.gridDisk(centerHex, radius + 1);
+          expandedHexes.forEach(hexId => {
+            if (!hexSet.has(hexId)) {
+              hexSet.add(hexId);
+            }
+          });
+        }
+      }
     
     const hexagonalGrid = Array.from(hexSet);
     
@@ -377,16 +449,23 @@ const RiskMap = () => {
       isWater: false,
     }]);
   }
-}, []);
-
-  const selectTerritory = useCallback((territoryName) => {
+  }, [calculateOptimalResolution]);  const selectTerritory = useCallback((territoryName) => {
+    if (territoryName === 'World') {
+      setCenter([0, 0]); // Global center
+      setZoom(1); // World zoom level
+      setSelectedHex(null);
+      setSelectedTerritory('World');
+      generateFullHexOverlay(0, 0, true); // World view
+      return;
+    }
     const territory = RISK_TERRITORIES[territoryName];
     if (territory) {
       const { lat, lng } = territory;
       setCenter([lat, lng]);
+      setZoom(BASE_ZOOM); // Territory zoom level
       setSelectedHex(null);
       setSelectedTerritory(territoryName);
-      generateFullHexOverlay(lat, lng);
+      generateFullHexOverlay(lat, lng, false); // Territory view
     }
   }, [generateFullHexOverlay]);
 
@@ -397,7 +476,7 @@ const RiskMap = () => {
 
   useEffect(() => {
     // Initialize with default territory
-    selectTerritory('Eastern United States');
+    selectTerritory('World');
   }, [selectTerritory]);
 
   // Group territories by continent
@@ -423,7 +502,9 @@ const RiskMap = () => {
           value={selectedTerritory} 
           onChange={(e) => selectTerritory(e.target.value)}
           style={{ marginRight: '10px', padding: '5px' }}
+          data-testid="territory-dropdown"
         >
+          <option value="World">World</option>
           <option value="">Select Territory</option>
           {Object.entries(territoryGroups).map(([continent, territories]) => (
             <optgroup key={continent} label={continent}>
@@ -434,6 +515,18 @@ const RiskMap = () => {
               ))}
             </optgroup>
           ))}
+        </select>
+        <select 
+          value={hexResolution} 
+          disabled
+          style={{ marginRight: '10px', padding: '5px', backgroundColor: '#f5f5f5' }}
+          data-testid="hex-size-dropdown"
+          title="Hex size automatically optimized for performance (≤128 hexes)"
+        >
+          <option value={0}>Large Hexes (~1100km)</option>
+          <option value={1}>Medium Hexes (~420km)</option>
+          <option value={2}>Small Hexes (~160km)</option>
+          <option value={3}>Tiny Hexes (~60km)</option>
         </select>
         <button type="button" onClick={toggleHexOverlay}>
           {showHexes ? 'Hide Hexes' : 'Show Hexes'}
